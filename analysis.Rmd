@@ -1,0 +1,101 @@
+---
+title: "C&S Rep"
+output: html_document
+---
+
+Load some useful packages.
+
+```{r}
+library(lme4) # mixed model regressions
+library(bootstrap) # bootstraps for confidence intervals
+library(ggplot2) # plotting
+library(plyr) # data manipulation
+```
+
+```{r}
+rm(list=ls())
+
+## for bootstrapping 95% confidence intervals
+theta <- function(x,xdata,na.rm=T) {mean(xdata[x],na.rm=na.rm)}
+ci.low <- function(x,na.rm=T) {
+  mean(x,na.rm=na.rm) - quantile(bootstrap(1:length(x),1000,theta,x,na.rm=na.rm)$thetastar,.025,na.rm=na.rm)}
+ci.high <- function(x,na.rm=T) {
+  quantile(bootstrap(1:length(x),1000,theta,x,na.rm=na.rm)$thetastar,.975,na.rm=na.rm) - mean(x,na.rm=na.rm)}
+```
+
+Read in data.
+
+```{r} 
+d <- read.csv("~/Teaching/ESSLLI/C&S/results-8-22-14.csv")
+ 
+# reorder factor levels for condition
+d$Input.condition <- factor(d$Input.condition, 
+                             levels=c("false","local","literal","all"))
+
+```
+
+First filter participants based on the two manipulation checks.
+
+```{r}
+mean(d$Input.letters_check == as.numeric(as.character(d$Answer.letters_check)),
+     na.rm=TRUE)
+mean(d$Input.circles_check == as.numeric(as.character(d$Answer.circles_check)),
+     na.rm=TRUE)
+
+dc <- subset(d, 
+             d$Input.letters_check == 
+               as.numeric(as.character(d$Answer.letters_check)) &
+               d$Input.circles_check == 
+               as.numeric(as.character(d$Answer.circles_check)))
+```
+
+Finally, check for repeats in the data.
+
+```{r}
+ordered <- dc[order(dc$SubmitTime),]
+dcc <- ordered[!duplicated(ordered$WorkerId),]
+```
+
+Now see how much we've lost.
+
+```{r}
+length(d$WorkerId)
+length(dc$WorkerId)
+length(dcc$WorkerId)
+```
+
+Main analysis
+-------------
+
+Aggregate data across conditions.
+
+```{r}
+ms <- ddply(dcc, .(Input.condition), summarise,
+      rating = mean(Answer.truth_judgment),
+      cih = ci.high(Answer.truth_judgment),
+      cil = ci.low(Answer.truth_judgment))
+```
+
+Now plot means.
+
+```{r}
+theme_set(theme_bw()) # set ggplot2 theme to be a little nicer
+
+qplot(Input.condition, rating, 
+      stat="identity", fill=Input.condition,
+      ymin=rating-cil, ymax=rating+cih, 
+      geom=c("bar","linerange"), 
+      data=ms) + 
+  scale_y_continuous(breaks=c(1,3,5,7)) +
+  ylab("Mean Rating") + 
+  xlab("Condition")
+```
+
+Also look at histograms over individual responses.
+
+```{r}
+qplot(Answer.truth_judgment, facets=.~Input.condition, binwidth=1,
+      data=dcc) + 
+  scale_x_continuous(breaks=c(1,3,5,7)) + 
+  xlab("Truth Judgment") 
+```
